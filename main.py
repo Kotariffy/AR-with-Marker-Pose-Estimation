@@ -78,8 +78,8 @@ def main():
 
     calibration_data_path = "calib_data/MultiMatrix.npz"
     calibration_data = np.load(calibration_data_path)
-    cam_mat = calibration_data["camMatrix"]
-    dist_coef = calibration_data["distCoef"]
+    camMatrix = calibration_data["camMatrix"]
+    distCoef = calibration_data["distCoef"]
 
     dictionary = aruco.getPredefinedDictionary(aruco.DICT_6X6_250)
     parameters = aruco.DetectorParameters()
@@ -88,12 +88,10 @@ def main():
     MARKER_SIZE = 4 # centimeters
 
     while cap.isOpened():
-
         # Capture frame-by-frame.
         ret, img = cap.read()
         if not ret:
             break
-
         # Detecting markers.
         corners, ids, reject = detector.detectMarkers(img)
 
@@ -102,12 +100,12 @@ def main():
 
         if corners:
             # Getting rotation and traslation vectors.
-            rVec, tVec, _ = aruco.estimatePoseSingleMarkers(corners, MARKER_SIZE, cam_mat, dist_coef)
+            rVec, tVec, _ = aruco.estimatePoseSingleMarkers(corners, MARKER_SIZE, camMatrix, distCoef)
             total_markers = range(0, ids.size)
             for ids, corners, i in zip(ids, corners, total_markers):
                 
                 # Drawing axisies for the pose of the marker
-                _ = cv.drawFrameAxes(img, cam_mat, dist_coef, rVec[i], tVec[i], 4, 4)
+                _ = cv.drawFrameAxes(img, camMatrix, distCoef, rVec[i], tVec[i], 4, 4)
 
                 corners = corners.reshape(4,2)
                 corners = corners.astype(int)
@@ -172,30 +170,6 @@ def calculateEulerAngle(rotation_matrix):
     rxyz_deg = [roll , pitch , yaw]
 
     return rxyz_deg
-
-def calculateEulerAngleSimply(rotation_matrix):
-    R11 = rotation_matrix[0][0]
-    R12 = rotation_matrix[0][1]
-    R13 = rotation_matrix[0][2]
-    R21 = rotation_matrix[1][0]
-    R22 = rotation_matrix[1][1]
-    R23 = rotation_matrix[1][2]
-    R31 = rotation_matrix[2][0]
-    R32 = rotation_matrix[2][1]
-    R33 = rotation_matrix[2][2]
-
-    roll = atan2(R32, R33)
-    pitch = atan2(-R31, sqrt(R32*R32+ R33*R33))
-    yaw = atan2(R21, R11)
-
-    # convert from radians to degrees
-    roll = roll * 180/pi 
-    pitch = pitch * 180/pi
-    yaw = yaw * 180/pi 
-    rxyz_deg = [roll , pitch , yaw]
-
-    return rxyz_deg
-
 
 if __name__ == '__main__':
     cap = cv.VideoCapture(0)
