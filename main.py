@@ -1,6 +1,7 @@
 import numpy as np
 import cv2 as cv
 from cv2 import aruco
+import urllib.request
 from math import (
     asin, pi, atan2, sqrt, cos
 )
@@ -58,6 +59,68 @@ def marker_display(corners, ids, rejected, image):
                        2)
     return image
 
+# =====================================================================
+
+
+def main():
+
+    calibration_data_path = "calib_data/MultiMatrix.npz"
+    calibration_data = np.load(calibration_data_path)
+    cam_matrix = calibration_data["camMatrix"]
+    dist_coef = calibration_data["distCoef"]
+
+    dictionary = aruco.getPredefinedDictionary(aruco.DICT_6X6_250)
+    parameters = aruco.DetectorParameters()
+    detector = cv.aruco.ArucoDetector(dictionary, parameters)
+
+    MARKER_SIZE = 4  # centimeters
+
+    while True:
+        img_resp = urllib.request.urlopen(url)
+        imgnp = np.array(bytearray(img_resp.read()), dtype=np.uint8)
+
+        im = cv.imdecode(imgnp, -1)
+
+        # Detecting markers.
+        corners, ids, reject = detector.detectMarkers(im)
+        
+        # Display markers.
+        im = marker_display(corners, ids, reject, im)
+
+        if corners:
+            # Getting rotation and traslation vectors.
+            # rvec, tvec, _ = aruco.estimatePoseSingleMarkers(corners, MARKER_SIZE, camMatrix, distCoef)
+            rvec, tvec, _ = my_estimatePoseSingleMarkers(corners, MARKER_SIZE, cam_matrix, dist_coef)
+            total_markers = range(0, ids.size)
+            for ids, corners, i in zip(ids, corners, total_markers):
+                # Drawing axisies for the pose of the marker
+                _ = cv.drawFrameAxes(im, cam_matrix, dist_coef, rvec[i], tvec[i], 4, 4)
+
+                corners = corners.reshape(4, 2)
+                corners = corners.astype(int)
+                top_right = corners[0].ravel()
+                bottom_right = corners[2].ravel()
+
+                cv.putText(im, f"id: {ids[0]} Dist: {tvec[i][0]}", top_right, cv.FONT_HERSHEY_PLAIN, 1.3,
+                           PURPLE, 2)
+                cv.putText(im, f"x: {tvec[i][1]} y: {tvec[i][2]}", bottom_right,
+                           cv.FONT_HERSHEY_PLAIN, 1.3, PURPLE, 2)
+                x = tvec[i][2][0]
+                y = tvec[i][1][0]
+                z = tvec[i][0][0]
+
+                rotation_matrix, _ = cv.Rodrigues(rvec[i])
+                angle_vec = calculateEulerAngle(rotation_matrix)
+                print_coordinates(i, x, y, z, angle_vec[0], angle_vec[1], angle_vec[2])
+
+                # -------------------------------
+
+        cv.imshow('live cam testing', im)
+        key = cv.waitKey(5)
+        if key==ord('q'):
+            break
+
+# ======================================================================
 
 # КРЕН roll -> rotation about x-axis (RED axis)
 # ТАНГАЖ pitch -> rotation about y-axis (GREEN axis)
@@ -75,63 +138,7 @@ def print_coordinates(id, x, y, z, roll, pitch, yaw):
     print('      - pitch:   ', pitch)
     print('      - yaw:     ', yaw)
 
-
-def main():
-    calibration_data_path = "calib_data/MultiMatrix.npz"
-    calibration_data = np.load(calibration_data_path)
-    cam_matrix = calibration_data["camMatrix"]
-    dist_coef = calibration_data["distCoef"]
-
-    dictionary = aruco.getPredefinedDictionary(aruco.DICT_6X6_250)
-    parameters = aruco.DetectorParameters()
-    detector = cv.aruco.ArucoDetector(dictionary, parameters)
-
-    MARKER_SIZE = 4  # centimeters
-
-    while cap.isOpened():
-        # Capture frame-by-frame.
-        ret, img = cap.read()
-        if not ret:
-            break
-        # Detecting markers.
-        corners, ids, reject = detector.detectMarkers(img)
-
-        # Display markers.
-        img = marker_display(corners, ids, reject, img)
-
-        if corners:
-            # Getting rotation and traslation vectors.
-            # rvec, tvec, _ = aruco.estimatePoseSingleMarkers(corners, MARKER_SIZE, camMatrix, distCoef)
-            rvec, tvec, _ = my_estimatePoseSingleMarkers(corners, MARKER_SIZE, cam_matrix, dist_coef)
-            total_markers = range(0, ids.size)
-            for ids, corners, i in zip(ids, corners, total_markers):
-                # Drawing axisies for the pose of the marker
-                _ = cv.drawFrameAxes(img, cam_matrix, dist_coef, rvec[i], tvec[i], 4, 4)
-
-                corners = corners.reshape(4, 2)
-                corners = corners.astype(int)
-                top_right = corners[0].ravel()
-                bottom_right = corners[2].ravel()
-
-                cv.putText(img, f"id: {ids[0]} Dist: {tvec[i][0]}", top_right, cv.FONT_HERSHEY_PLAIN, 1.3,
-                           PURPLE, 2)
-                cv.putText(img, f"x: {tvec[i][1]} y: {tvec[i][2]}", bottom_right,
-                           cv.FONT_HERSHEY_PLAIN, 1.3, PURPLE, 2)
-                x = tvec[i][2][0]
-                y = tvec[i][1][0]
-                z = tvec[i][0][0]
-
-                rotation_matrix, _ = cv.Rodrigues(rvec[i])
-                angle_vec = calculateEulerAngle(rotation_matrix)
-                print_coordinates(i, x, y, z, angle_vec[0], angle_vec[1], angle_vec[2])
-
-                # -------------------------------
-
-        # Display the resulting frame with axies.
-        cv.imshow('Main window', img)
-        if cv.waitKey(1) == ord('q'):
-            break
-
+# ======================================================================
 
 def calculateEulerAngle(rotation_matrix):
     r11 = rotation_matrix[0][0]
@@ -172,6 +179,8 @@ def calculateEulerAngle(rotation_matrix):
 
     return rxyz_deg
 
+# ======================================================================
+
 def my_estimatePoseSingleMarkers(corners, marker_size, mtx, distortion):
     marker_points = np.array([[-marker_size / 2, marker_size / 2, 0],
                               [marker_size / 2, marker_size / 2, 0],
@@ -187,12 +196,17 @@ def my_estimatePoseSingleMarkers(corners, marker_size, mtx, distortion):
         trash.append(success)
     return rvecs, tvecs, trash
 
+# ======================================================================
+
 if __name__ == '__main__':
-    
-    cap = cv.VideoCapture(0, cv.CAP_DSHOW)
-    
+
+    url = 'http://192.168.1.10/cam-mid.jpg'
+    cv.namedWindow("live cam testing", cv.WINDOW_AUTOSIZE)
+    cap = cv.VideoCapture(url)
+    # cap = cv.VideoCapture(0, cv.CAP_DSHOW)
+
     if not cap.isOpened():
-        print("Cannot open camera")
+        print("Failed to open camera")
         exit()
 
     main()
