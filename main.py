@@ -5,21 +5,8 @@ import urllib.request
 from math import (
     asin, pi, atan2, sqrt, cos
 )
+import websocket
 
-ARUCO_DICT = {
-    "DICT_4x4_50": cv.aruco.DICT_4X4_50,
-    "DICT_4x4_100": cv.aruco.DICT_4X4_100,
-    "DICT_4x4_250": cv.aruco.DICT_4X4_250,
-    "DICT_4x4_1000": cv.aruco.DICT_4X4_1000,
-    "DICT_5x5_50": cv.aruco.DICT_5X5_50,
-    "DICT_5x5_100": cv.aruco.DICT_5X5_100,
-    "DICT_5x5_250": cv.aruco.DICT_5X5_250,
-    "DICT_5x5_1000": cv.aruco.DICT_5X5_1000,
-    "DICT_6x6_50": cv.aruco.DICT_6X6_50,
-    "DICT_6x6_100": cv.aruco.DICT_6X6_100,
-    "DICT_6x6_250": cv.aruco.DICT_6X6_250,
-    "DICT_6x6_1000": cv.aruco.DICT_6X6_1000
-}
 
 BLUE = (255, 50, 50)
 GREEN = (50, 255, 50)
@@ -105,6 +92,8 @@ def main():
                            PURPLE, 2)
                 cv.putText(im, f"x: {tvec[i][1]} y: {tvec[i][2]}", bottom_right,
                            cv.FONT_HERSHEY_PLAIN, 1.3, PURPLE, 2)
+                
+
                 x = tvec[i][2][0]
                 y = tvec[i][1][0]
                 z = tvec[i][0][0]
@@ -112,6 +101,13 @@ def main():
                 rotation_matrix, _ = cv.Rodrigues(rvec[i])
                 angle_vec = calculateEulerAngle(rotation_matrix)
                 print_coordinates(i, x, y, z, angle_vec[0], angle_vec[1], angle_vec[2])
+
+                my_msg = str(x) + "," + str(y) + "," + str(z) + "," + str(angle_vec[0]) + "," + str(angle_vec[1]) + "," + str(angle_vec[2]) + '\n'
+    
+                ws.send(my_msg)
+                # Wait for server to respond and print it
+                result = ws.recv()
+                print("Received: " + result)
 
                 # -------------------------------
 
@@ -200,7 +196,8 @@ def my_estimatePoseSingleMarkers(corners, marker_size, mtx, distortion):
 
 if __name__ == '__main__':
 
-    url = 'http://192.168.1.10/cam-mid.jpg'
+    # Camera initialize
+    url = 'http://192.168.1.10/cam-lo.jpg'
     cv.namedWindow("live cam testing", cv.WINDOW_AUTOSIZE)
     cap = cv.VideoCapture(url)
     # cap = cv.VideoCapture(0, cv.CAP_DSHOW)
@@ -209,6 +206,13 @@ if __name__ == '__main__':
         print("Failed to open camera")
         exit()
 
+    # websocket initialize
+    ws = websocket.WebSocket()
+    ws.connect("ws://192.168.1.13")
+    print("Connected to WebSocket server")
+
     main()
+
+    ws.close()
     cap.release()
     cv.destroyAllWindows()
