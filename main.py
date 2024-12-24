@@ -7,6 +7,7 @@ from math import (
 import urllib.request
 import websocket
 from scipy.spatial.transform import Rotation
+import time
 
 ARUCO_DICT = {
     "DICT_4x4_50": cv.aruco.DICT_4X4_50,
@@ -52,7 +53,14 @@ def marker_display(corners, ids, rejected, image):
             cX = int((topLeft[0] + bottomRight[0]) / 2.0)
             cY = int((topLeft[1] + bottomRight[1]) / 2.0)
 
+            height, width, channels = image.shape
+            print(height, width)
+            X_center = int(width / 2.0)
+            Y_center = int(height / 2.0)
             cv.circle(image, (cX, cY), 4, PURPLE, -1)
+            cv.circle(image, (X_center, Y_center), 4, PURPLE, -1)
+
+            cv.line(image, (X_center, Y_center), (cX, cY), BLUE, 2)
 
             cv.putText(image, str(markerID), (topLeft[0], topLeft[1] - 10),
                        cv.FONT_HERSHEY_PLAIN,
@@ -80,6 +88,7 @@ def print_coordinates(id, x, y, z, roll, pitch, yaw):
 
 
 def main():
+    
     calibration_data_path = "calib_data/MultiMatrix.npz"
     calibration_data = np.load(calibration_data_path)
     cam_matrix = calibration_data["camMatrix"]
@@ -93,7 +102,6 @@ def main():
 
     t = 0
     t, x, y, z, x_angle_deg, y_angle_deg, z_angle_deg, wx, wy, wz, w_angle_x, w_angle_y, w_angle_z = initialize()
-    
 
     while True:
 
@@ -106,7 +114,7 @@ def main():
         corners, ids, reject = detector.detectMarkers(img)
 
         # Display markers.
-        # img = marker_display(corners, ids, reject, img)
+        img = marker_display(corners, ids, reject, img)
 
         objPoints = np.array([[-MARKER_SIZE / 2, MARKER_SIZE / 2, 0],
                               [MARKER_SIZE / 2, MARKER_SIZE / 2, 0],
@@ -136,12 +144,13 @@ def main():
                 success, rvec, tvec = cv.solvePnP(objPoints, corners[i], cam_matrix, dist_coef, flags=cv.SOLVEPNP_ITERATIVE)
 
                 if success:
+                    start = time.time()
                     print(f'Шаг: {t}')
                     cv.drawFrameAxes(img, cam_matrix, dist_coef, rvec, tvec, MARKER_SIZE * 1.5, 2)
                     print(f'Расстояние:  {tvec.flatten()} мм')
-                    x = tvec[0][0]
-                    y = tvec[1][0]
-                    z = tvec[2][0]
+                    x = tvec[0][0] / 10.0
+                    y = tvec[1][0] / 10.0
+                    z = tvec[2][0] / 10.0
 
                     rotation_matrix, _ = cv.Rodrigues(rvec)
                     r = Rotation.from_matrix(rotation_matrix)
@@ -156,12 +165,19 @@ def main():
                         wy = y - y_temp
                         wz = z - z_temp
 
-                    print(f"Скорости поворота: wx={wx}, wy={wy}, wz={wz}", end='\n')
-                    print(f"Скорости поворота углов: {w_angle_x}, {w_angle_y}, {w_angle_z}", end='\n')
-                    print(f"Углы повороты: x={x_angle_deg}, y={y_angle_deg}, z={z_angle_deg}", end='\n\n')
+                    print(f"Скорости поворота: Vx={wx}, Vy={wy}, Vz={wz}", end='\n')
+                    print(f"Скорости поворота углов: wx={w_angle_x}, wy={w_angle_y}, wz={w_angle_z}", end='\n')
+                    print(f"Углы: крен:{x_angle_deg}, тангаж:{y_angle_deg}, курс:{z_angle_deg}", end='\n\n')
                     
                     # Send to esp
                     my_msg = str(x) + "," + str(y) + "," + str(z) + "," + str(wx) + "," + str(wy) + "," + str(wz) + "," + str(x_angle_deg) + "," + str(y_angle_deg) + "," + str(z_angle_deg) + "," + str(w_angle_x) + "," + str(w_angle_y) + "," + str(w_angle_z) + '\n'
+                    
+
+                    end = time.time()
+                    while (end - start < 0.01):
+                        end = time.time()
+                        # print("time: ", end - start, "seconds!")
+
                     ws.send(my_msg)
                     # Wait for server to respond and print it
                     result = ws.recv()
@@ -216,7 +232,8 @@ def my_estimatePoseSingleMarkers(corners, marker_size, mtx, distortion):
 if __name__ == '__main__':
 
     # Camera initialize
-    url = 'http://192.168.1.10/cam-lo.jpg'
+    url = 'http://192.168.1.10/cam-mid.jpg'   # home wifi
+    # url = 'http://192.168.51.31/cam-lo.jpg' # phone wifi
     cv.namedWindow("live cam testing", cv.WINDOW_AUTOSIZE)
     cap = cv.VideoCapture(url)
     # cap = cv.VideoCapture(0, cv.CAP_DSHOW)
@@ -227,7 +244,8 @@ if __name__ == '__main__':
 
     # websocket initialize
     ws = websocket.WebSocket()
-    ws.connect("ws://192.168.1.13")
+    ws.connect("ws://192.168.1.13") # home wifi
+    # ws.connect("ws://192.168.51.249") # phone wifi
     print("Connected to WebSocket server")
 
     main()
